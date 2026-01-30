@@ -29,6 +29,20 @@ func main() {
 	defer d.Close()
 
 	r := gin.Default()
+
+	// Lightweight CORS middleware to allow Swagger UI and browser requests
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(200)
+			return
+		}
+		c.Next()
+	})
+
 	handlers.RegisterRoutes(r, d)
 
 	addr := ":8080"
