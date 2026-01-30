@@ -4,15 +4,9 @@ services:
   init-db:
     image: alpine:3.19
     entrypoint: ["sh", "-c"]
-    command: >
-      if [ -f /work/retailDB.sqlite ]; then 
-        chown 1000:1000 /work/retailDB.sqlite || true; 
-        chmod 660 /work/retailDB.sqlite || true; 
-      else 
-        touch /work/retailDB.sqlite && chown 1000:1000 /work/retailDB.sqlite && chmod 660 /work/retailDB.sqlite; 
-      fi
+    command: "mkdir -p /work/data && if [ -f /work/data/retailDB.sqlite ]; then chown 1000:1000 /work/data/retailDB.sqlite || true; chmod 660 /work/data/retailDB.sqlite || true; else touch /work/data/retailDB.sqlite && chown 1000:1000 /work/data/retailDB.sqlite && chmod 660 /work/data/retailDB.sqlite; fi"
     volumes:
-      - ./retailDB.sqlite:/work/retailDB.sqlite
+      - ./data:/work/data
     restart: "no"
 
   app:
@@ -23,11 +17,11 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./retailDB.sqlite:/app/retailDB.sqlite
+      - ./data:/app/data
       - ./openapi.yaml:/app/openapi.yaml:ro
     environment:
       - PORT=8080
-      - RETAILDB_PATH=/app/retailDB.sqlite
+      - RETAILDB_PATH=/app/data/retailDB.sqlite
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=password
       - JWT_SECRET=changeme

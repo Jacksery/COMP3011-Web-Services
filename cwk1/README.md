@@ -59,7 +59,7 @@ docker-compose up -d --build
 
 Notes:
 
-- Ensure `retailDB.sqlite` is mounted as a volume to `/app/retailDB.sqlite` to persist data between container restarts.
+- Ensure `./data` is mounted as a volume to `/app/data` and `RETAILDB_PATH` points to `/app/data/retailDB.sqlite` to persist data between container restarts. The included `init-db` helper will create `./data/retailDB.sqlite` and set safe permissions if it is missing.
 - Set `JWT_SECRET`, `ADMIN_USER`, and `ADMIN_PASSWORD` via environment variables in production.
 
 - Access the service at: `http://localhost:8080/`
