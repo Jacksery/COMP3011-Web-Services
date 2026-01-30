@@ -32,7 +32,7 @@ RETAILDB_PATH=./retailDB.sqlite
 PORT=8080
 ```
 
-2. Run the service:
+2. Run the service locally (dev):
 
 ```
 go run .
@@ -46,6 +46,53 @@ POST /auth/login
 ```
 
 4. Use token with `Authorization: Bearer <token>` for `PUT /admin/products/:id`.
+
+---
+
+## Docker deployment (local or VPS) ⚙️
+
+Build and run with Docker (recommended for Hetzner VPS):
+
+- Build and run with Docker:
+
+````
+docker build -t retaildb-service:latest .
+docker run -p 8080:8080 \
+  -e PORT=8080 \
+  -e RETAILDB_PATH=/app/retailDB.sqlite \
+  -v $PWD/retailDB.sqlite:/app/retailDB.sqlite \
+  retaildb-service:latest
+
+> **Apple Silicon note:** If you're on an M1/M2 Mac and need an **amd64** image for Hetzner, use Docker Buildx (with QEMU emulation):
+>
+> ```bash
+> docker buildx build --platform linux/amd64 -t retaildb-service:latest --load .
+> ```
+>
+> This builds an amd64 image on Apple Silicon and loads it into your local Docker. If building directly on an amd64 Linux host you can keep using `docker build`.
+````
+
+- Or use docker-compose (recommended for quick deploy):
+
+```
+docker-compose up -d --build
+```
+
+Notes:
+
+- Ensure `retailDB.sqlite` is mounted as a volume to `/app/retailDB.sqlite` to persist data between container restarts.
+- Set `JWT_SECRET`, `ADMIN_USER`, and `ADMIN_PASSWORD` via environment variables in production.
+
+### Quick Hetzner VPS steps 💡
+
+1. Push code to a Git repo on the VPS or `git clone` there.
+2. Install Docker & Docker Compose on the VPS (Debian/Ubuntu):
+   - `curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh`
+   - `sudo apt install -y docker-compose-plugin` (or follow Docker Compose v2 install for your distro)
+3. `docker compose up -d --build` inside the project folder.
+4. The service will be available at `http://your-vps-ip:8080`.
+
+---
 
 ## API docs
 

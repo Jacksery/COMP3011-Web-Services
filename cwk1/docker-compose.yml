@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    image: retaildb-service:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./retailDB.sqlite:/app/retailDB.sqlite
+      - ./openapi.yaml:/app/openapi.yaml:ro
+    environment:
+      - PORT=8080
+      - RETAILDB_PATH=/app/retailDB.sqlite
+      - ADMIN_USER=admin
+      - ADMIN_PASSWORD=password
+      - JWT_SECRET=changeme
+    restart: unless-stopped

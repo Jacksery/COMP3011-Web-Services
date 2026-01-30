@@ -1,0 +1,18 @@
+# Binaries and build artifacts
+/app/
+/bin/
+
+# Git
+.git
+
+# Local env and db
+.env
+*.sqlite
+
+# Editor files
+.vscode
+.DS_Store
+
+# Go build cache
+pkg/
+**/*.test
