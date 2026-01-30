@@ -65,6 +65,39 @@ Notes:
 - Access the service at: `http://localhost:8080/`
   > Public API docs for this VPS: `http://188.245.149.135:8080/docs`
 
+### DB file permissions & compose helper 🔧
+
+If you encounter `readonly database` or `is a directory` errors when starting with `docker compose`, the repository includes a one-shot `init-db` service in `docker-compose.yml` that ensures `./retailDB.sqlite` exists and sets ownership to UID:GID `1000:1000` with permissions `660` before `app` starts.
+
+- Find the runtime `appuser` UID:GID with:
+
+```
+docker run --rm --entrypoint id retaildb-service:latest appuser
+```
+
+- If the reported UID:GID differs from `1000:1000`, update the `chown` value in `docker-compose.yml` under the `init-db` service.
+
+- Recreate the stack after edits:
+
+```
+docker compose down
+docker compose up -d --build
+```
+
+- Alternative: mount a directory (safer) instead of a single file, for example:
+
+```
+# docker-compose.yml
+volumes:
+  - ./data:/app/data
+# env
+RETAILDB_PATH=/app/data/retailDB.sqlite
+```
+
+Ensure `./data/retailDB.sqlite` exists and is owned by the runtime UID:GID and writable.
+
+If you'd like, I can (A) update `docker-compose.yml` to use `./data` and create the DB there automatically, or (B) add an entrypoint script to the Docker image that creates and chowns the DB at container startup. Which do you prefer?
+
 ---
 
 ## API docs

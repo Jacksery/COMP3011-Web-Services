@@ -1,9 +1,25 @@
 version: "3.8"
 
 services:
+  init-db:
+    image: alpine:3.19
+    entrypoint: ["sh", "-c"]
+    command: >
+      if [ -f /work/retailDB.sqlite ]; then 
+        chown 1000:1000 /work/retailDB.sqlite || true; 
+        chmod 660 /work/retailDB.sqlite || true; 
+      else 
+        touch /work/retailDB.sqlite && chown 1000:1000 /work/retailDB.sqlite && chmod 660 /work/retailDB.sqlite; 
+      fi
+    volumes:
+      - ./retailDB.sqlite:/work/retailDB.sqlite
+    restart: "no"
+
   app:
     build: .
     image: retaildb-service:latest
+    depends_on:
+      - init-db
     ports:
       - "8080:8080"
     volumes:
