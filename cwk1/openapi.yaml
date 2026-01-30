@@ -1,0 +1,411 @@
+openapi: 3.0.3
+info:
+  title: RetailDB Service
+  version: 1.0.0
+  description: API for the RetailDB coursework service
+servers:
+  - url: http://localhost:8080
+paths:
+  /auth/login:
+    post:
+      summary: Obtain JWT for admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              valid:
+                value:
+                  username: admin
+                  password: password
+      responses:
+        "200":
+          description: Token returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              examples:
+                sample:
+                  value:
+                    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        "400":
+          description: Bad request (invalid JSON)
+        "401":
+          description: Unauthorized (invalid credentials)
+        "500":
+          description: Internal server error
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+              examples:
+                ok:
+                  value: { status: "ok" }
+  /products:
+    get:
+      summary: List products
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: A list of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+              examples:
+                sample:
+                  value:
+                    - product_id: AH2430
+                      product_name: "None"
+                      brand: "None"
+                      description: "None"
+                      last_visited: "2018-05-19 15:13:00"
+                    - product_id: G27341
+                      product_name: "Women's adidas Originals Sleek Shoes"
+                      brand: Adidas
+                      listing_price: 76
+                      sale_price: 38
+                      discount: 0.5
+                      revenue: 1641
+                      description: "A modern take on adidas sport heritage..."
+                      reviews: 24
+                      last_visited: "2018-11-29 16:16:00"
+        "400":
+          description: Bad request (invalid query parameters)
+        "500":
+          description: Internal server error
+  /products/{id}:
+    get:
+      summary: Get product by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+              examples:
+                sample:
+                  value:
+                    product_id: G27341
+                    product_name: "Women's adidas Originals Sleek Shoes"
+                    brand: Adidas
+                    listing_price: 76.0
+                    sale_price: 38.0
+                    discount: 0.5
+                    revenue: 1641.0
+                    description: "A modern take on adidas sport heritage..."
+                    rating: 4.2
+                    reviews: 24
+                    last_visited: "2018-11-29 16:16:00"
+        "400":
+          description: Bad request (invalid ID format)
+        "404":
+          description: Not found
+        "500":
+          description: Internal server error
+  /admin/products:
+    post:
+      summary: Create a new product
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreate"
+            examples:
+              sample:
+                value:
+                  product_id: NEW1
+                  product_name: "My Product"
+                  brand: "Acme"
+                  listing_price: 12.34
+                  sale_price: 9.99
+                  discount: 0.19
+                  revenue: 99
+                  description: "Short description"
+                  rating: 4.1
+                  reviews: 12
+                  last_visited: "2022-01-01 00:00:00"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  product_id: { type: string }
+              examples:
+                ok:
+                  value: { status: "created", product_id: "NEW1" }
+        "400":
+          description: Bad request (invalid payload)
+        "401":
+          description: Unauthorized (missing or invalid token)
+        "409":
+          description: Conflict (product already exists)
+        "500":
+          description: Internal server error
+
+  /admin/products/{id}:
+    put:
+      summary: Update modified fields for a product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateModified"
+            examples:
+              update-example:
+                value:
+                  modified_product_name: "New Name"
+                  modified_description: "Updated description"
+                  modified_brand: "MyBrand"
+                  modified_listing_price: 99.99
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+              examples:
+                ok:
+                  value: { status: "updated" }
+        "400":
+          description: Bad request (invalid update payload)
+        "401":
+          description: Unauthorized (missing or invalid token)
+        "403":
+          description: Forbidden (insufficient privileges)
+        "500":
+          description: Internal server error
+    delete:
+      summary: Delete product by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  product_id: { type: string }
+              examples:
+                ok:
+                  value: { status: "deleted", product_id: "DEL1" }
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+        "500":
+          description: Internal server error
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required: [username, password]
+      example:
+        username: admin
+        password: password
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+      example:
+        token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    Product:
+      type: object
+      properties:
+        product_id:
+          type: string
+        product_name:
+          type: string
+          nullable: true
+        brand:
+          type: string
+          nullable: true
+        listing_price:
+          type: number
+          format: float
+        sale_price:
+          type: number
+          format: float
+        discount:
+          type: number
+          format: float
+        revenue:
+          type: number
+          format: float
+        description:
+          type: string
+          nullable: true
+        rating:
+          type: number
+          format: float
+        reviews:
+          type: number
+          format: float
+        last_visited:
+          type: string
+        modified_product_name:
+          type: string
+          nullable: true
+        modified_description:
+          type: string
+          nullable: true
+        modified_brand:
+          type: string
+          nullable: true
+        modified_listing_price:
+          type: number
+          format: float
+        modified_sale_price:
+          type: number
+          format: float
+        modified_discount:
+          type: number
+          format: float
+        modified_revenue:
+          type: number
+          format: float
+        modified_last_visited:
+          type: string
+          nullable: true
+      example:
+        product_id: G27341
+        product_name: "Women's adidas Originals Sleek Shoes"
+        brand: Adidas
+        listing_price: 76.0
+        sale_price: 38.0
+        discount: 0.5
+        revenue: 1641.0
+        description: "A modern take on adidas sport heritage..."
+        rating: 4.2
+        reviews: 24
+        last_visited: "2018-11-29 16:16:00"
+        modified_product_name: null
+        modified_description: null
+        modified_brand: null
+        modified_listing_price: null
+        modified_sale_price: null
+        modified_discount: null
+        modified_revenue: null
+        modified_last_visited: null
+    ProductCreate:
+      type: object
+      properties:
+        product_id:
+          type: string
+        product_name:
+          type: string
+        brand:
+          type: string
+        listing_price:
+          type: number
+          format: float
+        sale_price:
+          type: number
+          format: float
+        discount:
+          type: number
+          format: float
+        revenue:
+          type: number
+          format: float
+        description:
+          type: string
+        rating:
+          type: number
+          format: float
+        reviews:
+          type: number
+          format: float
+        last_visited:
+          type: string
+      required: [product_id]
+      example:
+        product_id: NEW1
+        product_name: "My Product"
+        brand: "Acme"
+        listing_price: 12.34
+        sale_price: 9.99
+        discount: 0.19
+        revenue: 99
+        description: "Short description"
+        rating: 4.1
+        reviews: 12
+        last_visited: "2022-01-01 00:00:00"
+
+    UpdateModified:
+      type: object
+      additionalProperties: true
+      example:
+        modified_product_name: "New Name"
+        modified_description: "Updated description"
+        modified_listing_price: 99.99
