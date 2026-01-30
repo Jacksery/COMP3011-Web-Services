@@ -4,9 +4,10 @@ services:
   init-db:
     image: alpine:3.19
     entrypoint: ["sh", "-c"]
-    command: "mkdir -p /work/data && if [ -f /work/data/retailDB.sqlite ]; then chown 1000:1000 /work/data/retailDB.sqlite || true; chmod 660 /work/data/retailDB.sqlite || true; else touch /work/data/retailDB.sqlite && chown 1000:1000 /work/data/retailDB.sqlite && chmod 660 /work/data/retailDB.sqlite; fi"
+    # Mount the host ./data directory at /work. We check for errors (e.g. if ./data is a file)
+    command: "if [ -e /work ] && [ ! -d /work ]; then echo '/work exists and is not a directory; remove or rename the host ./data file and create a directory' >&2; exit 1; fi && mkdir -p /work && if [ -f /work/retailDB.sqlite ]; then chown 1000:1000 /work/retailDB.sqlite || true; chmod 660 /work/retailDB.sqlite || true; else touch /work/retailDB.sqlite && chown 1000:1000 /work/retailDB.sqlite && chmod 660 /work/retailDB.sqlite; fi"
     volumes:
-      - ./data:/work/data
+      - ./data:/work
     restart: "no"
 
   app:

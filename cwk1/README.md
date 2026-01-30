@@ -68,7 +68,12 @@ Notes:
 ### DB file permissions & compose helper 🔧
 
 If you encounter `readonly database` or `is a directory` errors when starting with `docker compose`, the repository includes a one-shot `init-db` service in `docker-compose.yml` that ensures `./retailDB.sqlite` exists and sets ownership to UID:GID `1000:1000` with permissions `660` before `app` starts.
+**Important:** The host `./data` path must be a directory. If `./data` is a file, the init container will print an error and exit. Create the directory like this if needed:
 
+```
+rm -f ./data   # only if ./data is a stray file
+mkdir -p ./data
+```
 - Find the runtime `appuser` UID:GID with:
 
 ```
