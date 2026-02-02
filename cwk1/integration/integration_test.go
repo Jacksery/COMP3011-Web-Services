@@ -15,7 +15,9 @@ func waitForHealthy(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		resp, err := client.Get("http://localhost:8080/healthz")
 		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
+			if err := resp.Body.Close(); err != nil {
+				t.Fatalf("failed to close response body: %v", err)
+			}
 			return
 		}
 		time.Sleep(1 * time.Second)
@@ -36,15 +38,21 @@ func TestIntegration_FullFlow(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("failed to close response body: %v", err)
+		}
 		t.Fatalf("login returned non-200: %d %s", resp.StatusCode, string(body))
 	}
 	var lr map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&lr); err != nil {
-		resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Fatalf("failed to close response body: %v", cerr)
+		}
 		t.Fatalf("failed to parse login response: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
 	tok, ok := lr["token"]
 	if !ok || tok == "" {
 		t.Fatalf("no token in login response")
@@ -62,10 +70,14 @@ func TestIntegration_FullFlow(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("failed to close response body: %v", err)
+		}
 		t.Fatalf("create returned non-201: %d %s", resp.StatusCode, string(body))
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
 
 	// get product
 	resp, err = client.Get("http://localhost:8080/products/int-1")
@@ -74,10 +86,14 @@ func TestIntegration_FullFlow(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("failed to close response body: %v", err)
+		}
 		t.Fatalf("get returned non-200: %d %s", resp.StatusCode, string(body))
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
 
 	// delete product
 	req, _ = http.NewRequest(http.MethodDelete, "http://localhost:8080/admin/products/int-1", nil)
@@ -88,8 +104,12 @@ func TestIntegration_FullFlow(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("failed to close response body: %v", err)
+		}
 		t.Fatalf("delete returned non-200: %d %s", resp.StatusCode, string(body))
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
 }
