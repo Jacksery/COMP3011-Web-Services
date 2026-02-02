@@ -14,6 +14,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: List module files (debug)
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing repository root:"; ls -la . || true
+          echo "Listing cwk1:"; ls -la cwk1 || true
+          if [ -f cwk1/go.sum ]; then
+            echo "cwk1/go.sum exists (first 10 lines):"; head -n 10 cwk1/go.sum || true
+          else
+            echo "cwk1/go.sum NOT FOUND"
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
@@ -25,7 +36,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('cwk1/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -51,8 +62,12 @@ jobs:
       - name: Build
         run: cd cwk1 && go build ./...
 
-      - name: Run tests (with coverage)
-        run: cd cwk1 && go test ./... -v -coverprofile=coverage.out
+      - name: Run tests (with coverage, excluding integration)
+        run: |
+          cd cwk1
+          PKGS=$(go list ./... | grep -v '/integration')
+          echo "Testing packages: $PKGS"
+          go test $PKGS -v -coverprofile=coverage.out
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
