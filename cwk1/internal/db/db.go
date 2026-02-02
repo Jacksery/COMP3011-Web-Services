@@ -10,5 +10,10 @@ func OpenDB(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	// verify connection is usable
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
 }

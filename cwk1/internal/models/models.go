@@ -53,14 +53,18 @@ func GetProducts(db *sql.DB, limit, offset int) ([]Product, error) {
 	var res []Product
 	for rows.Next() {
 		var p Product
+		var productName sql.NullString
 		var brand sql.NullString
 		var listingStr, saleStr, discountStr, revenueStr sql.NullString
 		var ratingStr, reviewsStr sql.NullString
 		var description sql.NullString
 		var lastVisited sql.NullString
-		err := rows.Scan(&p.ProductID, &p.ProductName, &brand, &listingStr, &saleStr, &discountStr, &revenueStr, &description, &ratingStr, &reviewsStr, &lastVisited)
+		err := rows.Scan(&p.ProductID, &productName, &brand, &listingStr, &saleStr, &discountStr, &revenueStr, &description, &ratingStr, &reviewsStr, &lastVisited)
 		if err != nil {
 			return nil, err
+		}
+		if productName.Valid {
+			p.ProductName = productName.String
 		}
 		if brand.Valid {
 			p.Brand = brand.String
@@ -103,6 +107,9 @@ func GetProducts(db *sql.DB, limit, offset int) ([]Product, error) {
 		}
 		res = append(res, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return res, nil
 }
 
@@ -124,17 +131,21 @@ func GetProductByID(db *sql.DB, id string) (*Product, error) {
 		LEFT JOIN traffic t ON i.product_id = t.product_id
 		WHERE i.product_id = ?`, id)
 	var p Product
+	var productName sql.NullString
 	var brand sql.NullString
 	var listingStr, saleStr, discountStr, revenueStr sql.NullString
 	var ratingStr, reviewsStr sql.NullString
 	var description sql.NullString
 	var lastVisited sql.NullString
-	err := row.Scan(&p.ProductID, &p.ProductName, &brand, &listingStr, &saleStr, &discountStr, &revenueStr, &description, &ratingStr, &reviewsStr, &lastVisited)
+	err := row.Scan(&p.ProductID, &productName, &brand, &listingStr, &saleStr, &discountStr, &revenueStr, &description, &ratingStr, &reviewsStr, &lastVisited)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
+	}
+	if productName.Valid {
+		p.ProductName = productName.String
 	}
 	if brand.Valid {
 		p.Brand = brand.String
@@ -178,7 +189,9 @@ func GetProductByID(db *sql.DB, id string) (*Product, error) {
 	row2 := db.QueryRow(`SELECT modified_product_name, modified_description FROM info WHERE product_id = ?`, id)
 	var mpn sql.NullString
 	var md sql.NullString
-	_ = row2.Scan(&mpn, &md)
+	if err := row2.Scan(&mpn, &md); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
 	if mpn.Valid {
 		p.ModifiedProductName = &mpn.String
 	}
@@ -187,13 +200,17 @@ func GetProductByID(db *sql.DB, id string) (*Product, error) {
 	}
 	row3 := db.QueryRow(`SELECT modified_brand FROM brands WHERE product_id = ?`, id)
 	var mb sql.NullString
-	_ = row3.Scan(&mb)
+	if err := row3.Scan(&mb); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
 	if mb.Valid {
 		p.ModifiedBrand = &mb.String
-	}
+	} 
 	row4 := db.QueryRow(`SELECT modified_listing_price, modified_sale_price, modified_discount, modified_revenue FROM finance WHERE product_id = ?`, id)
 	var ml, ms, mdp, mr sql.NullString
-	_ = row4.Scan(&ml, &ms, &mdp, &mr)
+	if err := row4.Scan(&ml, &ms, &mdp, &mr); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	} 
 	if ml.Valid && ml.String != "None" && ml.String != "" {
 		if v, e := strconv.ParseFloat(ml.String, 64); e == nil {
 			p.ModifiedListingPrice = new(float64)
@@ -220,7 +237,9 @@ func GetProductByID(db *sql.DB, id string) (*Product, error) {
 	}
 	row5 := db.QueryRow(`SELECT modified_last_visited FROM traffic WHERE product_id = ?`, id)
 	var mlast sql.NullString
-	_ = row5.Scan(&mlast)
+	if err := row5.Scan(&mlast); err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
 	if mlast.Valid {
 		p.ModifiedLastVisited = &mlast.String
 	}

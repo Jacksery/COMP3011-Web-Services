@@ -28,12 +28,16 @@ func Init() {
 	if _, err := rand.Read(b); err != nil {
 		log.Printf("warning: failed to generate random JWT secret, falling back to devsecret: %v", err)
 		secret = []byte("devsecret")
-		os.Setenv("JWT_SECRET", string(secret))
+		if err := os.Setenv("JWT_SECRET", string(secret)); err != nil {
+			log.Printf("warning: failed to set JWT_SECRET env var: %v", err)
+		}
 		return
 	}
 	s := base64.StdEncoding.EncodeToString(b)
 	secret = []byte(s)
-	_ = os.Setenv("JWT_SECRET", s)
+	if err := os.Setenv("JWT_SECRET", s); err != nil {
+		log.Printf("warning: failed to set JWT_SECRET env var: %v", err)
+	}
 	// Print a visible warning — only when not running in production
 	env := os.Getenv("ENV")
 	if env == "" {

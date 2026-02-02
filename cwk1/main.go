@@ -15,7 +15,12 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		// Not fatal if there is no .env file; log other errors
+		if !os.IsNotExist(err) {
+			log.Printf("warning: failed to load .env file: %v", err)
+		}
+	}
 	// initialize JWT secret (generates one for dev if missing and prints it)
 	auth.Init()
 	dbPath := os.Getenv("RETAILDB_PATH")
@@ -26,7 +31,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open db: %v", err)
 	}
-	defer d.Close()
+	defer func() {
+		if err := d.Close(); err != nil {
+			log.Printf("warning: failed to close db: %v", err)
+		}
+	}()
 
 	r := gin.Default()
 
@@ -59,7 +68,7 @@ func main() {
 	}
 
 	log.Printf("listening on %s", addr)
-	if err := srv.ListenAndServe(); err != nil {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
-	}
+	} 
 }

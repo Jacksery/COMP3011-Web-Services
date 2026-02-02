@@ -42,11 +42,17 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 		if l := c.Query("limit"); l != "" {
 			if v, err := strconv.Atoi(l); err == nil {
 				limit = v
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+				return
 			}
 		}
 		if o := c.Query("offset"); o != "" {
 			if v, err := strconv.Atoi(o); err == nil {
 				offset = v
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
+				return
 			}
 		}
 		prods, err := models.GetProducts(db, limit, offset)
@@ -86,6 +92,7 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 					c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 					return
 				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"status": "updated"})
