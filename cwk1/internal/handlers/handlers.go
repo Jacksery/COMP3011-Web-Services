@@ -78,7 +78,7 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 	})
 
 	authGroup := r.Group("/admin")
-	authGroup.Use(auth.AuthMiddleware())
+	authGroup.Use(auth.Middleware())
 	{
 		authGroup.PUT("/products/:id", func(c *gin.Context) {
 			id := c.Param("id")

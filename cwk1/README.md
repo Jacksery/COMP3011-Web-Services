@@ -146,7 +146,18 @@ If you'd like, I can (A) update `docker-compose.yml` to use `./data` and create 
 - Current implementation focuses on correctness and test coverage for core requirements. Optional enhancements to add:
   - Stronger request validation (field formats, ranges) and improved error messages
   - Additional endpoints (search/filtering, metrics)
-  - CI (GitHub Actions) to run tests on push (see `.github/workflows/ci.yml`)
+  - CI (GitHub Actions) to run tests on push (see `.github/workflows/ci.yml`). The CI now also runs `golangci-lint` to enforce code quality.
+
+  To run the linter locally:
+
+```bash
+# install
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.0
+# run in module
+cd cwk1
+golangci-lint run ./...
+```
+
   - Swap to RS256 and key rotation for production-grade signing
 
 ## Acknowledgements

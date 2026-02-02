@@ -73,7 +73,7 @@ func ValidateCredentials(username, password string) bool {
 	return username == u && password == p
 }
 
-func AuthMiddleware() gin.HandlerFunc {
+func Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {

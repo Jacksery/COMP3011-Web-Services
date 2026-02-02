@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 )
 
@@ -49,7 +50,11 @@ func GetProducts(db *sql.DB, limit, offset int) ([]Product, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("warning: failed to close rows: %v", err)
+		}
+	}()
 	var res []Product
 	for rows.Next() {
 		var p Product
@@ -205,12 +210,12 @@ func GetProductByID(db *sql.DB, id string) (*Product, error) {
 	}
 	if mb.Valid {
 		p.ModifiedBrand = &mb.String
-	} 
+	}
 	row4 := db.QueryRow(`SELECT modified_listing_price, modified_sale_price, modified_discount, modified_revenue FROM finance WHERE product_id = ?`, id)
 	var ml, ms, mdp, mr sql.NullString
 	if err := row4.Scan(&ml, &ms, &mdp, &mr); err != nil && err != sql.ErrNoRows {
 		return nil, err
-	} 
+	}
 	if ml.Valid && ml.String != "None" && ml.String != "" {
 		if v, e := strconv.ParseFloat(ml.String, 64); e == nil {
 			p.ModifiedListingPrice = new(float64)
@@ -261,7 +266,11 @@ func UpdateModifiedFields(db *sql.DB, id string, updates map[string]interface{})
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("warning: rollback failed: %v", err)
+		}
+	}()
 	if v, ok := updates["modified_product_name"]; ok {
 		_, err := tx.Exec(`UPDATE info SET modified_product_name = ? WHERE product_id = ?`, v, id)
 		if err != nil {
@@ -357,7 +366,11 @@ func CreateProduct(db *sql.DB, req CreateProductRequest) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("warning: rollback failed: %v", err)
+		}
+	}()
 
 	// insert into info
 	var pn interface{} = nil
@@ -444,7 +457,11 @@ func DeleteProduct(db *sql.DB, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("warning: rollback failed: %v", err)
+		}
+	}()
 	if _, err := tx.Exec(`DELETE FROM traffic WHERE product_id = ?`, id); err != nil {
 		return err
 	}

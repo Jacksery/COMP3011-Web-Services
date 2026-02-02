@@ -32,13 +32,17 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 func TestCreateAndGetProduct(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("failed to close db: %v", err)
+		}
+	}()
 
 	req := CreateProductRequest{
-		ProductID:   "p-1",
-		ProductName: strPtr("Widget"),
-		Brand:       strPtr("Acme"),
-		Description: strPtr("A test widget"),
+		ProductID:    "p-1",
+		ProductName:  strPtr("Widget"),
+		Brand:        strPtr("Acme"),
+		Description:  strPtr("A test widget"),
 		ListingPrice: floatPtr(19.99),
 		SalePrice:    floatPtr(9.99),
 		Discount:     floatPtr(10.0),
@@ -72,7 +76,11 @@ func TestCreateAndGetProduct(t *testing.T) {
 
 func TestGetProductsPagination(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("failed to close db: %v", err)
+		}
+	}()
 
 	for i := 0; i < 5; i++ {
 		id := fmt.Sprintf("p-%d", i)
@@ -92,15 +100,19 @@ func TestGetProductsPagination(t *testing.T) {
 
 func TestUpdateAndDeleteProduct(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("failed to close db: %v", err)
+		}
+	}()
 
 	if err := CreateProduct(db, CreateProductRequest{ProductID: "p-x"}); err != nil {
 		t.Fatalf("CreateProduct failed: %v", err)
 	}
 
 	updates := map[string]interface{}{
-		"modified_product_name": "NewName",
-		"modified_brand":        "NewBrand",
+		"modified_product_name":  "NewName",
+		"modified_brand":         "NewBrand",
 		"modified_listing_price": 55.5,
 	}
 	if err := UpdateModifiedFields(db, "p-x", updates); err != nil {
@@ -130,5 +142,5 @@ func TestUpdateAndDeleteProduct(t *testing.T) {
 }
 
 // helpers
-func strPtr(s string) *string { return &s }
+func strPtr(s string) *string     { return &s }
 func floatPtr(f float64) *float64 { return &f }

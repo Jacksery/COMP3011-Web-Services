@@ -39,7 +39,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 func TestHandlers_HelloAndAuthAndAdminFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("failed to close db: %v", err)
+		}
+	}()
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -126,7 +130,11 @@ func TestHandlers_HelloAndAuthAndAdminFlow(t *testing.T) {
 func TestAuthMiddlewareInvalidToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("failed to close db: %v", err)
+		}
+	}()
 
 	r := gin.New()
 	r.Use(gin.Recovery())
