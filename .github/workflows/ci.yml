@@ -25,7 +25,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('cwk1/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -35,16 +35,19 @@ jobs:
           sudo apt-get install -y gcc libsqlite3-dev
 
       - name: Run vet
+        working-directory: cwk1
         run: go vet ./...
 
       - name: Build
+        working-directory: cwk1
         run: go build ./...
 
       - name: Run tests (with coverage)
+        working-directory: cwk1
         run: go test ./... -v -coverprofile=coverage.out
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage.out
+          path: cwk1/coverage.out
