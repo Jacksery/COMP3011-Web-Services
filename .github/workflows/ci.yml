@@ -71,16 +71,23 @@ jobs:
       - name: Start stack with docker compose
         run: cd cwk1 && docker compose up -d --build
 
-      - name: Wait for health check
+      - name: Wait for health check (with diagnostics)
         run: |
-          for i in $(seq 1 30); do
+          set -e
+          # wait up to 120s, printing status and compose ps while waiting
+          for i in $(seq 1 60); do
             if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
               echo "healthy"
               exit 0
             fi
-            sleep 1
+            echo "waiting for service... ($i/60)"
+            docker compose ps || true
+            sleep 2
           done
-          echo "service did not start in time"; exit 1
+          echo "service did not start in time; dumping docker-compose status and logs"
+          docker compose ps || true
+          docker compose logs --no-color --tail=200 || true
+          exit 1
 
       - name: Run integration tests
         run: cd cwk1 && go test ./integration -v
