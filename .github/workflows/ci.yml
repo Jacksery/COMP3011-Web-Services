@@ -35,30 +35,24 @@ jobs:
           sudo apt-get install -y gcc libsqlite3-dev
 
       - name: Prepare Go modules
-        working-directory: cwk1
+        run: cd cwk1 && go mod tidy
+
+      - name: Install golangci-lint
         run: |
-          go mod tidy
+          GO111MODULE=on go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.0
+          echo "golangci-lint installed"
 
       - name: Run linter (golangci-lint)
-        working-directory: cwk1
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: v1.59.0
-          args: run --config .golangci.yml ./...
-        env:
-          GOMODCACHE: ${{ runner.temp }}/gocache
+        run: cd cwk1 && golangci-lint run --config .golangci.yml ./...
 
       - name: Run vet
-        working-directory: cwk1
-        run: go vet ./...
+        run: cd cwk1 && go vet ./...
 
       - name: Build
-        working-directory: cwk1
-        run: go build ./...
+        run: cd cwk1 && go build ./...
 
       - name: Run tests (with coverage)
-        working-directory: cwk1
-        run: go test ./... -v -coverprofile=coverage.out
+        run: cd cwk1 && go test ./... -v -coverprofile=coverage.out
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -75,9 +69,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Start stack with docker compose
-        working-directory: cwk1
-        run: |
-          docker compose up -d --build
+        run: cd cwk1 && docker compose up -d --build
 
       - name: Wait for health check
         run: |
@@ -91,46 +83,7 @@ jobs:
           echo "service did not start in time"; exit 1
 
       - name: Run integration tests
-        working-directory: cwk1
-        run: go test ./integration -v
+        run: cd cwk1 && go test ./integration -v
 
       - name: Tear down
-        working-directory: cwk1
-        run: docker compose down
-
-      - name: Install system deps for sqlite (required by github runners)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libsqlite3-dev
-
-      - name: Prepare Go modules
-        working-directory: cwk1
-        run: |
-          go mod tidy
-
-      - name: Run linter (golangci-lint)
-        working-directory: cwk1
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: v1.59.0
-          args: run --config .golangci.yml ./...
-        env:
-          GOMODCACHE: ${{ runner.temp }}/gocache
-
-      - name: Run vet
-        working-directory: cwk1
-        run: go vet ./...
-
-      - name: Build
-        working-directory: cwk1
-        run: go build ./...
-
-      - name: Run tests (with coverage)
-        working-directory: cwk1
-        run: go test ./... -v -coverprofile=coverage.out
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: cwk1/coverage.out
+        run: cd cwk1 && docker compose down
