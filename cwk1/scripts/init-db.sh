@@ -8,6 +8,9 @@ if [ -e /work ] && [ ! -d /work ]; then
 fi
 
 mkdir -p /work
+# Ensure work directory is writable (some CI runners mount directories with restrictive perms)
+chown 1000:1000 /work || true
+chmod 777 /work || true
 
 # If DB already exists in data dir, just ensure permissions
 if [ -f /work/retailDB.sqlite ]; then
@@ -15,6 +18,8 @@ if [ -f /work/retailDB.sqlite ]; then
   chown 1000:1000 /work/retailDB.sqlite || true
   # Make DB writable by the app regardless of UID mapping in CI runners
   chmod 666 /work/retailDB.sqlite || true
+  echo "init-db: /work content:"; ls -la /work || true
+  stat /work/retailDB.sqlite || true
 
 # Else if a DB file exists in repo root (mounted at /src), copy it into /work
 elif [ -f /src/retailDB.sqlite ]; then
@@ -23,6 +28,8 @@ elif [ -f /src/retailDB.sqlite ]; then
   chown 1000:1000 /work/retailDB.sqlite || true
   # If the file from the repo is read-only, make it writable for the runtime app
   chmod 666 /work/retailDB.sqlite || true
+  echo "init-db: /work content after copy:"; ls -la /work || true
+  stat /work/retailDB.sqlite || true
 
 # Otherwise create an empty DB file
 else
@@ -30,6 +37,8 @@ else
   touch /work/retailDB.sqlite
   chown 1000:1000 /work/retailDB.sqlite || true
   chmod 666 /work/retailDB.sqlite || true
+  echo "init-db: created /work/retailDB.sqlite with perms:"; ls -la /work || true
+  stat /work/retailDB.sqlite || true
 fi
 
 echo "init-db: done"
