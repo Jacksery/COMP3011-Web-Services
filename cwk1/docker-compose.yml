@@ -3,11 +3,12 @@ version: "3.8"
 services:
   init-db:
     image: alpine:3.19
-    entrypoint: ["sh", "-c"]
-    # Mount the host ./data directory at /work. We check for errors (e.g. if ./data is a file)
-    command: "if [ -e /work ] && [ ! -d /work ]; then echo '/work exists and is not a directory; remove or rename the host ./data file and create a directory' >&2; exit 1; fi && mkdir -p /work && if [ -f /work/retailDB.sqlite ]; then chown 1000:1000 /work/retailDB.sqlite || true; chmod 660 /work/retailDB.sqlite || true; else touch /work/retailDB.sqlite && chown 1000:1000 /work/retailDB.sqlite && chmod 660 /work/retailDB.sqlite; fi"
+    # Run a small script that ensures /work is a directory, copies an existing DB from repo root if present, and sets ownership
+    command: ["sh", "/work/scripts/init-db.sh"]
     volumes:
       - ./data:/work
+      - ./scripts:/work/scripts:ro
+      - ./:/src:ro
     restart: "no"
 
   app:
