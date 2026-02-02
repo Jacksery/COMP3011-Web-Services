@@ -117,6 +117,181 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 		})
 	}
 
+	// Serve a small interactive dashboard at the root for quick testing and demos
+	r.GET("/", func(c *gin.Context) {
+		html := `<!doctype html>
+		<html>
+		  <head>
+		    <meta charset="utf-8" />
+		    <meta name="viewport" content="width=device-width, initial-scale=1" />
+		    <title>RetailDB Interactive Dashboard</title>
+		    <style>
+		      body { font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; }
+		      h1 { margin-bottom: 0.2em }
+		      .card { border: 1px solid #ddd; padding: 12px; margin: 12px 0; border-radius: 6px }
+		      input, textarea, select { width: 100%; padding: 8px; margin-top: 6px; box-sizing: border-box }
+		      button { padding: 8px 12px; margin-top: 8px }
+		      pre { background: #f8f8f8; padding: 8px; overflow: auto }
+		    </style>
+		  </head>
+		  <body>
+		    <h1>RetailDB Interactive Dashboard</h1>
+		    <p>Use these controls to interact with the running service. Tokens are stored in <code>localStorage</code>.</p>
+
+		    <div class="card">
+		      <h2>Login (get token)</h2>
+		      <label>Username
+		        <input id="login-user" value="admin" />
+		      </label>
+		      <label>Password
+		        <input id="login-pass" value="password" type="password" />
+		      </label>
+		      <button onclick="login()">Login</button>
+      <div>
+        Token: <code id="token" style="white-space:pre-wrap; word-break:break-all">(none)</code>
+        <button onclick="copyToken()">Copy</button>
+        <button onclick="clearToken()">Clear</button>
+        <a href="/docs" target="_blank" style="margin-left:12px">API Docs</a>
+      </div>
+		    </div>
+
+		    <div class="card">
+		      <h2>Public: List Products</h2>
+		      <label>Limit<input id="limit" value="10" /></label>
+		      <label>Offset<input id="offset" value="0" /></label>
+		      <button onclick="listProducts()">List</button>
+		      <pre id="list-result"></pre>
+		    </div>
+
+		    <div class="card">
+		      <h2>Public: Get Product by ID</h2>
+		      <label>Product ID<input id="get-id" /></label>
+		      <button onclick="getProduct()">Get</button>
+		      <pre id="get-result"></pre>
+		    </div>
+
+		    <div class="card">
+		      <h2>Admin: Create Product (requires Bearer token)</h2>
+		      <label>Product ID<input id="create-id" /></label>
+		      <label>Product Name<input id="create-name" /></label>
+		      <button onclick="createProduct()">Create</button>
+		      <pre id="create-result"></pre>
+		    </div>
+
+		    <div class="card">
+		      <h2>Admin: Update Modified Fields (JSON)</h2>
+		      <label>Product ID<input id="update-id" /></label>
+		      <label>JSON body<textarea id="update-body" rows="4">{"modified_product_name":"New name"}</textarea></label>
+		      <button onclick="updateProduct()">Update</button>
+		      <pre id="update-result"></pre>
+		    </div>
+
+		    <div class="card">
+		      <h2>Admin: Delete Product</h2>
+		      <label>Product ID<input id="delete-id" /></label>
+		      <button onclick="deleteProduct()">Delete</button>
+		      <pre id="delete-result"></pre>
+		    </div>
+
+		    <script>
+      function setToken(t) {
+        localStorage.setItem('rdb_token', t);
+        const el = document.getElementById('token');
+        if (el) el.textContent = t || '(none)';
+      }
+      function getToken() { return localStorage.getItem('rdb_token') }
+      function copyToken() {
+        const t = getToken();
+        if (!t) { showNotif('No token to copy'); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).then(() => showNotif('Token copied'), () => showNotif('Copy failed'))
+        } else {
+          // fallback
+          const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); showNotif('Token copied') } catch (e) { showNotif('Copy failed') } finally { document.body.removeChild(ta) }
+        }
+      }
+      function clearToken() { setToken(''); showNotif('Token cleared') }
+      function showNotif(msg) { console.log('notif:', msg); alert(msg) }
+      (function(){ setToken(getToken()); })();
+
+      async function login() {
+        const u = document.getElementById('login-user').value;
+        const p = document.getElementById('login-pass').value;
+        const res = await fetch('/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u, password:p})});
+        let json = {}
+        try { json = await res.json() } catch (e) { json = {status: res.status} }
+        if (res.ok && json.token) { setToken(json.token) } else { alert('login failed: '+JSON.stringify(json)) }
+      }
+
+		      async function listProducts(){
+        try {
+          const l = document.getElementById('limit').value || 10;
+          const o = document.getElementById('offset').value || 0;
+          const res = await fetch('/products?limit=' + encodeURIComponent(l) + '&offset=' + encodeURIComponent(o));
+          const body = await res.json();
+          document.getElementById('list-result').innerText = JSON.stringify(body, null, 2);
+        } catch (e) {
+          document.getElementById('list-result').innerText = 'error: ' + e;
+        }
+      }
+
+      async function getProduct(){
+        try {
+          const id = document.getElementById('get-id').value;
+          const res = await fetch('/products/' + encodeURIComponent(id));
+          const body = await res.json();
+          document.getElementById('get-result').innerText = JSON.stringify(body, null, 2);
+        } catch (e) {
+          document.getElementById('get-result').innerText = 'error: ' + e;
+        }
+      }
+
+      async function createProduct(){
+        try {
+          const token = getToken();
+          const id = document.getElementById('create-id').value;
+          const name = document.getElementById('create-name').value;
+          const headers = {'Content-Type':'application/json'};
+          if (token) headers['Authorization'] = 'Bearer ' + token;
+          const res = await fetch('/admin/products', {method:'POST', headers: headers, body: JSON.stringify({product_id:id, product_name:name})});
+          let out; try { out = await res.json() } catch(e) { out = {status:res.status} }
+          document.getElementById('create-result').innerText = JSON.stringify(out, null, 2);
+        } catch (e) {
+          document.getElementById('create-result').innerText = 'error: ' + e;
+        }
+      }
+
+      async function updateProduct(){
+		        const token = getToken();
+		        const id = document.getElementById('update-id').value;
+		        let body = {};
+		        try { body = JSON.parse(document.getElementById('update-body').value) } catch(e) { alert('invalid JSON'); return }
+			const headers = {'Content-Type':'application/json'};
+			if (token) headers['Authorization'] = 'Bearer ' + token;
+			const res = await fetch('/admin/products/' + encodeURIComponent(id), {
+				method:'PUT',
+				headers: headers,
+				body: JSON.stringify(body)
+			});
+			let out; try { out = await res.json() } catch(e) { out = {status:res.status} }
+			document.getElementById('update-result').innerText = JSON.stringify(out, null, 2);
+		}
+
+		async function deleteProduct(){
+			const token = getToken();
+			const id = document.getElementById('delete-id').value;
+			const headers = {};
+			if (token) headers['Authorization'] = 'Bearer ' + token;
+			const res = await fetch('/admin/products/' + encodeURIComponent(id), {method:'DELETE', headers: headers});
+			let out; try { out = await res.json() } catch(e) { out = {status:res.status} }
+			document.getElementById('delete-result').innerText = JSON.stringify(out, null, 2);
+		}
+		    </script>
+		  </body>
+		</html>`
+		c.Data(200, "text/html; charset=utf-8", []byte(html))
+	})
+
 	// Serve OpenAPI definition and a minimal Swagger UI
 	r.StaticFile("/openapi.yaml", "./openapi.yaml")
 	r.GET("/docs", func(c *gin.Context) {

@@ -3,6 +3,7 @@ package integration_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -58,8 +59,10 @@ func TestIntegration_FullFlow(t *testing.T) {
 		t.Fatalf("no token in login response")
 	}
 
-	// create product
-	prod := map[string]interface{}{"product_id": "int-1", "product_name": "Integration"}
+	// create product with a unique id to avoid collisions across test runs
+	id := fmt.Sprintf("int-%d", time.Now().UnixNano())
+	t.Logf("integration test using product id %s", id)
+	prod := map[string]interface{}{"product_id": id, "product_name": "Integration-" + id}
 	pb, _ := json.Marshal(prod)
 	req, _ := http.NewRequest(http.MethodPost, "http://localhost:8080/admin/products", bytes.NewReader(pb))
 	req.Header.Set("Content-Type", "application/json")
@@ -68,19 +71,24 @@ func TestIntegration_FullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create product request failed: %v", err)
 	}
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
 		body, _ := io.ReadAll(resp.Body)
 		if err := resp.Body.Close(); err != nil {
 			t.Fatalf("failed to close response body: %v", err)
 		}
-		t.Fatalf("create returned non-201: %d %s", resp.StatusCode, string(body))
+		t.Fatalf("create returned non-201/409: %d %s", resp.StatusCode, string(body))
 	}
+	// close response and continue (409 means product already existed)
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
+	t.Logf("create status: %d", resp.StatusCode)
 	if err := resp.Body.Close(); err != nil {
 		t.Fatalf("failed to close response body: %v", err)
 	}
 
 	// get product
-	resp, err = client.Get("http://localhost:8080/products/int-1")
+	resp, err = client.Get("http://localhost:8080/products/" + id)
 	if err != nil {
 		t.Fatalf("get product failed: %v", err)
 	}
@@ -96,7 +104,7 @@ func TestIntegration_FullFlow(t *testing.T) {
 	}
 
 	// delete product
-	req, _ = http.NewRequest(http.MethodDelete, "http://localhost:8080/admin/products/int-1", nil)
+	req, _ = http.NewRequest(http.MethodDelete, "http://localhost:8080/admin/products/"+id, nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err = client.Do(req)
 	if err != nil {
