@@ -76,6 +76,7 @@ If you encounter `readonly database` or `is a directory` errors when starting wi
 rm -f ./data   # only if ./data is a stray file
 mkdir -p ./data
 ```
+
 - Find the runtime `appuser` UID:GID with:
 
 ```
