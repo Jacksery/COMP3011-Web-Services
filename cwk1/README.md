@@ -1,5 +1,7 @@
 # COMP3011 | RetailDB Go Service
 
+[![CI](https://github.com/Jacksery/COMP3011-Web-Services/actions/workflows/ci.yml/badge.svg)](https://github.com/Jacksery/COMP3011-Web-Services/actions/workflows/ci.yml)
+
 Lightweight Go web service for the `retailDB.sqlite` dataset (COMP3011 coursework).
 
 ## Features
