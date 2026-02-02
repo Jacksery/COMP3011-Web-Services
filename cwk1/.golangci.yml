@@ -1,0 +1,36 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - gofmt
+    - goimports
+    - gosec
+    - revive
+    - deadcode
+    - ineffassign
+    - typecheck
+    - unused
+    - misspell
+
+issues:
+  exclude-use-default: false
+  include:
+    - "\\.go$"
+  exclude:
+    - "error return value not checked.*(Close|close)\(" # allow unchecked Close in defer
+    - "should have comment|comment on exported" # relax exported comment requirement in coursework context
+
+linters-settings:
+  revive:
+    ignoreGeneratedHeader: true
+    severity: warning
+    rules:
+      - name: exported
+        severity: warning
+  gosec:
+    severity: medium
