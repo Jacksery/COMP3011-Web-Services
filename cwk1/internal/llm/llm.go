@@ -160,17 +160,24 @@ func Query(ctx context.Context, db *sql.DB, apiKey, model, question string) (str
 
 %s
 
-IMPORTANT: This dataset was exported from Python. Many columns contain the literal
-string 'None' instead of SQL NULL for missing values. Numeric columns (listing_price,
-sale_price, discount, revenue, rating, reviews, etc.) store numbers as TEXT and use
-the string 'None' for missing data.
+IMPORTANT DATA QUIRKS — read carefully before writing any query:
 
-When writing queries:
-- Always exclude rows where relevant columns equal the string 'None' or are empty.
-  For example: WHERE f.revenue != 'None' AND f.revenue != ''
-- Cast text numeric columns with CAST(column AS REAL) when doing numeric comparisons or ordering.
-- Use COALESCE with the modified_* column first, e.g. COALESCE(i.modified_product_name, i.product_name)
-  to pick up any admin edits.
+1. Python export artefacts: Many columns contain the literal string 'None' instead
+   of SQL NULL for missing values. Numeric columns (listing_price, sale_price,
+   discount, revenue, rating, reviews, etc.) are stored as TEXT and use 'None'
+   for missing data.
+   - Always exclude rows where relevant columns = 'None' or = ''.
+   - Cast numeric text columns with CAST(column AS REAL) for comparisons/ordering.
+
+2. Modified columns: Some tables have modified_* columns that hold admin overrides.
+   Always prefer the override: COALESCE(modified_column, original_column).
+
+3. Duplicate rows: The tables (info, brands, finance, reviews, traffic) are related
+   by product_id but a product_id can appear MORE THAN ONCE in each table.
+   - When listing distinct products, ALWAYS use GROUP BY product_id or SELECT DISTINCT
+     on product_id to avoid returning duplicate rows for the same product.
+   - When aggregating (SUM, AVG, COUNT, MAX, MIN), always GROUP BY product_id first
+     in a subquery if needed, to avoid inflated results from duplicate rows.
 
 Write a single READ-ONLY SQLite SELECT query that answers the user's question.
 Rules:
@@ -178,6 +185,7 @@ Rules:
 - Do NOT use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or any statement that modifies data.
 - Limit results to 100 rows maximum.
 - Use table aliases for readability.
+- Always deduplicate with GROUP BY or DISTINCT on product_id.
 
 User question: %s`, schema, question)
 
