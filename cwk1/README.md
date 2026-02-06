@@ -165,7 +165,7 @@ cd cwk1
 golangci-lint run ./...
 ```
 
-  - Swap to RS256 and key rotation for production-grade signing
+- Swap to RS256 and key rotation for production-grade signing
 
 ## Acknowledgements
 

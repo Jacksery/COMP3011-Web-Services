@@ -63,7 +63,7 @@ func main() {
 		Addr:           addr,
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
+		WriteTimeout:   60 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 
