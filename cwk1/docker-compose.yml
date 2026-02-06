@@ -21,13 +21,12 @@ services:
     volumes:
       - ./data:/app/data
       - ./openapi.yaml:/app/openapi.yaml:ro
-    env_file:
-      - path: .env
-        required: false
     environment:
       - PORT=8080
       - RETAILDB_PATH=/app/data/retailDB.sqlite
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=password
       - JWT_SECRET=changeme
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
     restart: unless-stopped
