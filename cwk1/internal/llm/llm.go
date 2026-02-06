@@ -14,7 +14,7 @@ import (
 // forbiddenKeywords are SQL keywords that indicate a write/DDL operation.
 var forbiddenKeywords = []string{
 	"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE",
-	"REPLACE", "TRUNCATE", "ATTACH", "DETACH", "REINDEX",
+	"TRUNCATE", "ATTACH", "DETACH", "REINDEX",
 	"VACUUM", "PRAGMA",
 }
 
@@ -199,6 +199,12 @@ func validateReadOnly(query string) error {
 		if containsKeyword(upper, kw) {
 			return fmt.Errorf("query contains forbidden keyword: %s", kw)
 		}
+	}
+
+	// REPLACE is a valid SQLite string function, but "REPLACE INTO" is a write.
+	// Only block the write form.
+	if strings.Contains(upper, "REPLACE INTO") {
+		return fmt.Errorf("query contains forbidden keyword: REPLACE INTO")
 	}
 
 	// Reject multiple statements (semicolons in the middle)
