@@ -22,7 +22,8 @@ services:
       - ./data:/app/data
       - ./openapi.yaml:/app/openapi.yaml:ro
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - PORT=8080
       - RETAILDB_PATH=/app/data/retailDB.sqlite
