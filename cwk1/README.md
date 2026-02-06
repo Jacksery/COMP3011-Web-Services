@@ -16,10 +16,12 @@ Lightweight Go web service for the `retailDB.sqlite` dataset (COMP3011 coursewor
   - `POST /admin/products` -> create new product (requires Bearer token)
   - `PUT /admin/products/:id` -> update modified\_\* fields (requires Bearer token)
   - `DELETE /admin/products/:id` -> delete product (requires Bearer token)
+  - `POST /query` -> AI-powered natural language database query (uses Gemini to generate read-only SQL)
 
 ## Requirements
 
-- Go 1.20+
+- Go 1.24+
+- (Optional) `GEMINI_API_KEY` environment variable for the `/query` endpoint
 - `retailDB.sqlite` placed in the project root (or set `RETAILDB_PATH`)
 
 ## Quick start
@@ -130,6 +132,11 @@ If you'd like, I can (A) update `docker-compose.yml` to use `./data` and create 
   - Admin login issues a JWT (HS256). Admin-protected endpoints require `Authorization: Bearer <token>`.
   - Server generates a dev JWT secret on startup if `JWT_SECRET` is not provided and hides it when `ENV=production`.
   - Middleware enforces algorithm checking (rejects unexpected `alg`).
+
+- **AI-powered query endpoint** 🤖
+  - `POST /query` accepts a natural-language question, uses the Google Gemini API to generate a read-only SQL SELECT, validates it against a keyword blocklist, and executes it.
+  - Multiple safety layers: prompt instructions, keyword validation (`INSERT`/`UPDATE`/`DELETE`/`DROP`/etc. rejected), multi-statement detection, and `SELECT`/`WITH` prefix enforcement.
+  - Returns both the generated SQL and the result rows for full transparency.
 
 - **Documentation & API contract** 📄
   - OpenAPI (YAML) at `/openapi.yaml` and interactive Swagger UI at `/docs`.

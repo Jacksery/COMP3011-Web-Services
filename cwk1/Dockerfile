@@ -1,5 +1,5 @@
 # Builder stage
-FROM golang:1.20-bullseye AS builder
+FROM golang:1.24-bookworm AS builder
 
 # Install build deps for CGO and sqlite3
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,7 +27,7 @@ ENV GOARCH=${TARGETARCH}
 RUN go build -ldflags "-s -w" -o /app/retaildb-service ./
 
 # Final runtime image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Install runtime dependencies (sqlite)
 RUN apt-get update && apt-get install -y --no-install-recommends \

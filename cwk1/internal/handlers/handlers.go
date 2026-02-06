@@ -3,12 +3,14 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"retaildb-service/internal/auth"
+	"retaildb-service/internal/llm"
 	"retaildb-service/internal/models"
 )
 
@@ -35,6 +37,35 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 	})
 
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+
+	// LLM-powered natural language database query (read-only)
+	r.POST("/query", func(c *gin.Context) {
+		apiKey := os.Getenv("GEMINI_API_KEY")
+		if apiKey == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "LLM query is not configured"})
+			return
+		}
+		model := os.Getenv("GEMINI_MODEL") // optional, defaults to gemini-2.0-flash-lite
+		var body struct {
+			Question string `json:"question"`
+		}
+		if err := c.BindJSON(&body); err != nil || strings.TrimSpace(body.Question) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request body must contain a non-empty 'question' string"})
+			return
+		}
+		generatedSQL, results, err := llm.Query(c.Request.Context(), db, apiKey, model, body.Question)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": err.Error(),
+				"sql":   generatedSQL,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"sql":     generatedSQL,
+			"results": results,
+		})
+	})
 
 	r.GET("/products", func(c *gin.Context) {
 		limit := 20
@@ -193,6 +224,15 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 		      <pre id="delete-result"></pre>
 		    </div>
 
+		    <div class="card">
+		      <h2>AI Query (Natural Language &rarr; SQL)</h2>
+		      <p style="margin:0 0 6px;color:#666">Ask a question about the database in plain English. Uses Gemini to generate a read-only SQL query.</p>
+		      <label>Question<input id="query-question" placeholder="e.g. What are the top 5 most expensive products?" /></label>
+		      <button onclick="aiQuery()">Ask</button>
+		      <details style="margin-top:6px"><summary>Generated SQL</summary><pre id="query-sql"></pre></details>
+		      <pre id="query-result"></pre>
+		    </div>
+
 		    <script>
       function setToken(t) {
         localStorage.setItem('rdb_token', t);
@@ -285,6 +325,25 @@ func RegisterRoutes(r *gin.Engine, db *sql.DB) {
 			const res = await fetch('/admin/products/' + encodeURIComponent(id), {method:'DELETE', headers: headers});
 			let out; try { out = await res.json() } catch(e) { out = {status:res.status} }
 			document.getElementById('delete-result').innerText = JSON.stringify(out, null, 2);
+		}
+
+		async function aiQuery(){
+			try {
+				const q = document.getElementById('query-question').value;
+				if (!q) { alert('Enter a question'); return; }
+				document.getElementById('query-result').innerText = 'Thinking...';
+				document.getElementById('query-sql').innerText = '';
+				const res = await fetch('/query', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q})});
+				const body = await res.json();
+				document.getElementById('query-sql').innerText = body.sql || '(none)';
+				if (body.results) {
+					document.getElementById('query-result').innerText = JSON.stringify(body.results, null, 2);
+				} else {
+					document.getElementById('query-result').innerText = JSON.stringify(body, null, 2);
+				}
+			} catch(e) {
+				document.getElementById('query-result').innerText = 'error: ' + e;
+			}
 		}
 		    </script>
 		  </body>

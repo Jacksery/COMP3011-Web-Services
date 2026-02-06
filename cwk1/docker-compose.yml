@@ -21,6 +21,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./openapi.yaml:/app/openapi.yaml:ro
+    env_file:
+      - .env
     environment:
       - PORT=8080
       - RETAILDB_PATH=/app/data/retailDB.sqlite
