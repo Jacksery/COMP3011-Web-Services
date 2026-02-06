@@ -73,8 +73,8 @@ func getSchema(db *sql.DB) (string, error) {
 // getSampleRows returns a formatted string of sample rows from a table,
 // ensuring a mix of populated and sparse/None rows so the LLM can see both.
 func getSampleRows(db *sql.DB, table string, n int) (string, error) {
-	// Discover columns first
-	colQuery := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 1", table)
+	// Discover columns first (table name comes from sqlite_master, not user input)
+	colQuery := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 1", table) //nolint:gosec // table from sqlite_master
 	probe, err := db.Query(colQuery)
 	if err != nil {
 		return "", err
@@ -98,7 +98,7 @@ func getSampleRows(db *sql.DB, table string, n int) (string, error) {
 
 	// Fetch rows where the filter column has real data (not 'None', not empty)
 	if filterCol != "" {
-		populatedQuery := fmt.Sprintf(
+		populatedQuery := fmt.Sprintf( //nolint:gosec // table/col from sqlite_master
 			"SELECT * FROM \"%s\" WHERE \"%s\" != 'None' AND \"%s\" != '' AND \"%s\" IS NOT NULL LIMIT %d",
 			table, filterCol, filterCol, filterCol, n,
 		)
@@ -108,7 +108,7 @@ func getSampleRows(db *sql.DB, table string, n int) (string, error) {
 		}
 
 		// Fetch rows where the filter column IS 'None' or empty
-		sparseQuery := fmt.Sprintf(
+		sparseQuery := fmt.Sprintf( //nolint:gosec // table/col from sqlite_master
 			"SELECT * FROM \"%s\" WHERE \"%s\" = 'None' OR \"%s\" = '' OR \"%s\" IS NULL LIMIT %d",
 			table, filterCol, filterCol, filterCol, n/2+1,
 		)
@@ -120,7 +120,7 @@ func getSampleRows(db *sql.DB, table string, n int) (string, error) {
 
 	// Fallback: if we got nothing, just grab the first n rows
 	if len(allRows) == 0 {
-		fallback := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT %d", table, n)
+		fallback := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT %d", table, n) //nolint:gosec // table from sqlite_master
 		fb, err := queryRowValues(db, fallback, len(cols))
 		if err != nil {
 			return "", err
