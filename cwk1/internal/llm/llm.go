@@ -19,7 +19,8 @@ var forbiddenKeywords = []string{
 }
 
 // getSchema reads the full SQLite schema from sqlite_master so the LLM knows
-// which tables and columns exist.
+// which tables and columns exist, plus sample rows so the LLM understands
+// the actual data shape (types, 'None' strings, column semantics, etc.).
 func getSchema(db *sql.DB) (string, error) {
 	rows, err := db.Query(`SELECT sql FROM sqlite_master WHERE type IN ('table','view') AND sql IS NOT NULL ORDER BY name`)
 	if err != nil {
@@ -42,7 +43,141 @@ func getSchema(db *sql.DB) (string, error) {
 	if err := rows.Err(); err != nil {
 		return "", fmt.Errorf("iterating schema rows: %w", err)
 	}
+
+	// Append 3 sample rows per table so the LLM can see real data values
+	tableRows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
+	if err == nil {
+		defer func() {
+			if cerr := tableRows.Close(); cerr != nil {
+				log.Printf("warning: close table rows: %v", cerr)
+			}
+		}()
+		for tableRows.Next() {
+			var tbl string
+			if err := tableRows.Scan(&tbl); err != nil {
+				continue
+			}
+			sample, err := getSampleRows(db, tbl, 3)
+			if err != nil {
+				continue
+			}
+			if sample != "" {
+				parts = append(parts, fmt.Sprintf("\n-- Sample rows from %s:\n%s", tbl, sample))
+			}
+		}
+	}
+
 	return strings.Join(parts, "\n"), nil
+}
+
+// getSampleRows returns a formatted string of sample rows from a table,
+// ensuring a mix of populated and sparse/None rows so the LLM can see both.
+func getSampleRows(db *sql.DB, table string, n int) (string, error) {
+	// Discover columns first
+	colQuery := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 1", table)
+	probe, err := db.Query(colQuery)
+	if err != nil {
+		return "", err
+	}
+	cols, err := probe.Columns()
+	if closeErr := probe.Close(); closeErr != nil {
+		log.Printf("warning: close probe rows: %v", closeErr)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	// Find a non-PK column likely to have 'None' values for filtering
+	// (skip first column which is usually the PK / product_id)
+	filterCol := ""
+	if len(cols) > 1 {
+		filterCol = cols[1]
+	}
+
+	var allRows [][]string
+
+	// Fetch rows where the filter column has real data (not 'None', not empty)
+	if filterCol != "" {
+		populatedQuery := fmt.Sprintf(
+			"SELECT * FROM \"%s\" WHERE \"%s\" != 'None' AND \"%s\" != '' AND \"%s\" IS NOT NULL LIMIT %d",
+			table, filterCol, filterCol, filterCol, n,
+		)
+		populated, err := queryRowValues(db, populatedQuery, len(cols))
+		if err == nil {
+			allRows = append(allRows, populated...)
+		}
+
+		// Fetch rows where the filter column IS 'None' or empty
+		sparseQuery := fmt.Sprintf(
+			"SELECT * FROM \"%s\" WHERE \"%s\" = 'None' OR \"%s\" = '' OR \"%s\" IS NULL LIMIT %d",
+			table, filterCol, filterCol, filterCol, n/2+1,
+		)
+		sparse, err := queryRowValues(db, sparseQuery, len(cols))
+		if err == nil {
+			allRows = append(allRows, sparse...)
+		}
+	}
+
+	// Fallback: if we got nothing, just grab the first n rows
+	if len(allRows) == 0 {
+		fallback := fmt.Sprintf("SELECT * FROM \"%s\" LIMIT %d", table, n)
+		fb, err := queryRowValues(db, fallback, len(cols))
+		if err != nil {
+			return "", err
+		}
+		allRows = fb
+	}
+
+	// Cap total sample rows
+	maxRows := n * 2
+	if len(allRows) > maxRows {
+		allRows = allRows[:maxRows]
+	}
+
+	var lines []string
+	lines = append(lines, "-- columns: "+strings.Join(cols, " | "))
+	for _, vals := range allRows {
+		lines = append(lines, "-- "+strings.Join(vals, " | "))
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+// queryRowValues runs a query and returns each row as a slice of string values.
+func queryRowValues(db *sql.DB, query string, numCols int) ([][]string, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			log.Printf("warning: close rows: %v", cerr)
+		}
+	}()
+
+	var result [][]string
+	for rows.Next() {
+		values := make([]interface{}, numCols)
+		ptrs := make([]interface{}, numCols)
+		for i := range values {
+			ptrs[i] = &values[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			continue
+		}
+		var vals []string
+		for _, v := range values {
+			switch t := v.(type) {
+			case nil:
+				vals = append(vals, "NULL")
+			case []byte:
+				vals = append(vals, string(t))
+			default:
+				vals = append(vals, fmt.Sprintf("%v", t))
+			}
+		}
+		result = append(result, vals)
+	}
+	return result, nil
 }
 
 // validateReadOnly rejects any SQL that is not a plain SELECT statement.
@@ -156,15 +291,15 @@ func Query(ctx context.Context, db *sql.DB, apiKey, model, question string) (str
 	}
 
 	// 2. Build prompt
-	prompt := fmt.Sprintf(`You are a SQL expert. Given the following SQLite database schema:
+	prompt := fmt.Sprintf(`You are a SQL expert. Given the following SQLite database schema
+and sample rows for each table:
 
 %s
 
 IMPORTANT DATA QUIRKS — read carefully before writing any query:
 
 1. Python export artefacts: Many columns contain the literal string 'None' instead
-   of SQL NULL for missing values. Numeric columns (listing_price, sale_price,
-   discount, revenue, rating, reviews, etc.) are stored as TEXT and use 'None'
+   of SQL NULL for missing values. Numeric columns are stored as TEXT and use 'None'
    for missing data.
    - Always exclude rows where relevant columns = 'None' or = ''.
    - Cast numeric text columns with CAST(column AS REAL) for comparisons/ordering.
@@ -182,6 +317,12 @@ IMPORTANT DATA QUIRKS — read carefully before writing any query:
    - When aggregating (SUM, AVG, COUNT, MAX, MIN), GROUP BY appropriately in a
      subquery first if needed, to avoid inflated results from duplicate rows.
 
+4. CRITICAL — Use the sample rows above to understand which columns contain the data
+   you need. Column names can be misleading. For example, in the reviews table the
+   actual rating and review count are in the columns named 'real_rating' and
+   'real_reviews', NOT 'rating' or 'reviews'. Always check the sample data to pick
+   the correct columns.
+
 Write a single READ-ONLY SQLite SELECT query that answers the user's question.
 Rules:
 - Output ONLY the raw SQL query, nothing else.
@@ -190,6 +331,7 @@ Rules:
 - Use table aliases for readability.
 - Always include product_id in the output columns.
 - Deduplicate with GROUP BY on product_name when the user is asking about distinct products.
+- Refer to the sample rows to pick the correct column for each concept.
 
 User question: %s`, schema, question)
 
