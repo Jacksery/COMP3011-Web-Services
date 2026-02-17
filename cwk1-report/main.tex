@@ -27,28 +27,37 @@ This report outlines the design and architectural choices for a web API that exp
 
 \section{Technology Stack and Justification}
 
-\subsection{Programming Language}
-[Describe your choice: Python, Node.js, Java, Go, etc. and justify selection based on project requirements, performance needs, and ecosystem support.]
-
-\subsection{Framework}
-[Outline framework selection: Flask, FastAPI, Express, Spring Boot, etc. Justify choice considering scalability, documentation, and development speed.]
+\subsection{Language and Framework}
+Go was selected as the primary programming language for this API implementation. Go's lightweight concurrency model, fast compilation, and minimal runtime overhead make it ideal for building high-performance HTTP services. The Gin framework was chosen for routing and middleware management, as it provides excellent performance, intuitive request handling, and seamless integration with Swagger/OpenAPI documentation.
 
 \subsection{Database}
-[Explain database choice: PostgreSQL, MongoDB, MySQL, etc. Include reasoning around data structure, performance requirements, and consistency needs.]
+SQLite was selected as the database solution. While SQLite has limitations for high-concurrency scenarios, it provides a lightweight, file-based relational database that requires minimal infrastructure setup and maintenance. This choice was justified by the project scope and simplicity requirements, though PostgreSQL would have been interesting to explore as it is recommended for production systems requiring concurrent write operations.
 
-\subsection{Additional Technologies}
-[Describe any additional tools: Docker, authentication libraries, API documentation tools, etc.]
+\subsection{API Documentation}
+Swagger UI was integrated for interactive API documentation and testing. This provides developers with an auto-generated, user-friendly interface to explore endpoints and test requests directly from the browser.
+
+\subsection{Deployment and Infrastructure}
+Docker and Docker Compose were used to containerize the application and manage dependencies, ensuring consistent deployment across environments. The application was deployed on a Hetzner cloud server, providing public access to the API with managed infrastructure and scalability options.
 
 \section{Design and Architectural Choices}
 
 \subsection{API Design}
-[Detail RESTful design principles, endpoint structure, and data models.]
+The implementation is a lightweight, monolithic RESTful JSON API written in Go (Go 1.24). It exposes clear, resource-oriented endpoints and an OpenAPI contract. Key endpoints include:\
+- \texttt{GET /products} — paginated list (supports \texttt{limit} and \texttt{offset}).\
+- \texttt{GET /products/:id} — aggregated product resource.\
+- Admin routes: \texttt{POST /admin/products}, \texttt{PUT /admin/products/:id}, \texttt{DELETE /admin/products/:id} (require auth).\
+- \texttt{POST /auth/login} — issues JWTs for admin access.\
+- \texttt{POST /query} — natural-language → read-only SQL (AI-assisted).\
+All endpoints return consistent HTTP status codes (200, 201, 400, 401, 404, 409, 500). Mutation operations are executed inside transactions and input validation plus middleware are used to keep API behaviour predictable.
 
 \subsection{Authentication and Security}
-[Explain security mechanisms implemented.]
+Admin authentication is implemented with JSON Web Tokens (HS256 for the coursework). Protected endpoints require an \texttt{Authorization: Bearer <token>} header and middleware validates token signature and algorithm. The server generates a development JWT secret when none is provided; in production secrets should be provisioned via environment or secret manager. The AI query endpoint is protected by layered safety controls: prompt constraints, keyword blocklisting (rejects \texttt{INSERT}/\texttt{UPDATE}/\texttt{DELETE}/\texttt{DROP}/etc.), multi‑statement detection, and enforcement that generated SQL begins with \texttt{SELECT} or \texttt{WITH}. Recommended production hardening: migrate to RS256 with key rotation, enforce stricter request validation, and centralise secret management.
 
 \subsection{Database Schema}
-[Describe schema design and relationships.]
+The service aggregates data from a single SQLite file (\texttt{retailDB.sqlite}), combining tables such as \texttt{info}, \texttt{brands}, \texttt{finance}, \texttt{reviews} and \texttt{traffic} into a composite product representation returned by read endpoints. Persistence is implemented using Go's \texttt{database/sql} and the SQLite driver; create/update/delete operations run inside transactions to preserve cross-table consistency. Queries are defensive against NULL/non-numeric values. For containerised deployments the DB file is persisted with a host-mounted volume and the path is configurable via \texttt{RETAILDB\_PATH}.
+
+\subsection{Architectural style and organization}
+The codebase follows a layered, modular architecture: HTTP handlers (e.g. \texttt{internal/handlers}), persistence logic (\texttt{internal/models}), and auth (\texttt{internal/auth}) are separated to improve testability and clarity. Cross-cutting concerns (auth, logging, validation) are implemented as middleware. The service is contract-driven (OpenAPI + Swagger UI), container-ready (Docker Compose), and covered by automated tests and CI/linting to ensure correctness and code quality. This architecture favours simplicity, observability and correctness for the embedded SQLite dataset used in the coursework.
 
 \section{Challenges and Solutions}
 
