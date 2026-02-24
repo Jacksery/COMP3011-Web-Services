@@ -1,4 +1,4 @@
-\documentclass[12pt,a4paper]{article}
+\documentclass[8pt,a4paper]{article}
 % \usepackage[utf-8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage[margin=1in]{geometry}
@@ -6,7 +6,7 @@
 \usepackage{hyperref}
 \usepackage{fancyhdr}
 \usepackage{setspace}
-\onehalfspacing
+\setstretch{1.2}
 
 \title{Technical Report: Web API for Retail Database}
 \author{Jack Jacobsen (sc22jj)}
@@ -28,71 +28,145 @@ This report outlines the design and architectural choices for a web API that exp
 \section{Technology Stack and Justification}
 
 \subsection{Language and Framework}
-Go was selected as the primary programming language for this API implementation. Go's lightweight concurrency model, fast compilation, and minimal runtime overhead make it ideal for building high-performance HTTP services. The Gin framework was chosen for routing and middleware management, as it provides excellent performance, intuitive request handling, and seamless integration with Swagger/OpenAPI documentation.
+Go (1.24) was chosen as the implementation language for several interconnected reasons. Its lightweight goroutine-based concurrency model means the server can handle many simultaneous HTTP connections with very low per-connection memory overhead compared with thread-per-request models used in languages like Java or Python. The compiler produces a single statically-linked binary with no runtime dependency, which simplifies Docker image construction and deployment. The language's strong standard library — in particular \texttt{net/http}, \texttt{database/sql}, \texttt{crypto/rand}, and \texttt{encoding/json} — reduced the number of third-party dependencies needed.
+
+Gin was selected as the HTTP framework over alternatives such as Echo, Chi, or the standard library's own \texttt{ServeMux}. Gin's performance benchmark results are consistently strong, its middleware chain model (\texttt{gin.HandlerFunc}) is intuitive to compose, and \texttt{gin-swagger} provides first-class Swagger UI serving from an OpenAPI YAML file with minimal configuration.
 
 \subsection{Database}
-SQLite was selected as the database solution. While SQLite has limitations for high-concurrency scenarios, it provides a lightweight, file-based relational database that requires minimal infrastructure setup and maintenance. This choice was justified by the project scope and simplicity requirements, though PostgreSQL would have been interesting to explore as it is recommended for production systems requiring concurrent write operations.
+SQLite was selected as the database because the retail dataset is provided as a pre-populated \texttt{.sqlite} file and the coursework scope does not demand concurrent write throughput. SQLite's file-based design eliminates the need for a separate database server process, simplifying both local development and Docker deployment. The \texttt{RETAILDB\_PATH} environment variable makes it straightforward to mount a different database file in each environment.
 
-\subsection{API Documentation}
-Swagger UI was integrated for interactive API documentation and testing. This provides developers with an auto-generated, user-friendly interface to explore endpoints and test requests directly from the browser.
+The primary trade-off acknowledged at design time is SQLite's single-writer constraint: under concurrent mutation load the driver returns \texttt{SQLITE\_BUSY}. For a read-heavy product catalogue with infrequent admin writes this is acceptable, but a PostgreSQL migration would be the correct path for production scale.
 
-\subsection{Deployment and Infrastructure}
-Docker and Docker Compose were used to containerize the application and manage dependencies, ensuring consistent deployment across environments. The application was deployed on a Hetzner cloud server, providing public access to the API with managed infrastructure and scalability options.
+\subsection{API Documentation and Deployment}
+Swagger UI is served at \texttt{/docs} directly from the running binary, giving consumers an interactive, always-current view of every endpoint, request schema, and response format. The OpenAPI contract was written first and used as a specification guide during handler implementation, ensuring the documented and actual API behaviour remain aligned.
+
+Docker and Docker Compose containerise both the application and its configuration. A host-mounted volume persists the SQLite file across container restarts. The image is deployed on a Hetzner cloud VPS, making the API publicly accessible via a stable IP address.
 
 \section{Design and Architectural Choices}
 
 \subsection{API Design}
-The implementation is a lightweight, monolithic RESTful JSON API written in Go (Go 1.24). It exposes clear, resource-oriented endpoints and an OpenAPI contract. Key endpoints include:\
-- \texttt{GET /products} — paginated list (supports \texttt{limit} and \texttt{offset}).\
-- \texttt{GET /products/:id} — aggregated product resource.\
-- Admin routes: \texttt{POST /admin/products}, \texttt{PUT /admin/products/:id}, \texttt{DELETE /admin/products/:id} (require auth).\
-- \texttt{POST /auth/login} — issues JWTs for admin access.\
-- \texttt{POST /query} — natural-language → read-only SQL (AI-assisted).\
-All endpoints return consistent HTTP status codes (200, 201, 400, 401, 404, 409, 500). Mutation operations are executed inside transactions and input validation plus middleware are used to keep API behaviour predictable.
+The service is a monolithic RESTful JSON API written in Go 1.24. The endpoint surface is intentionally small and resource-oriented: \texttt{GET /products} returns a paginated list (\texttt{limit}/\texttt{offset} query parameters, defaulting to 20 results), \texttt{GET /products/:id} returns a single aggregated product, and \texttt{POST /auth/login} issues a JWT for admin sessions. Admin mutation routes (\texttt{POST /admin/products}, \texttt{PUT /admin/products/:id}, \texttt{DELETE /admin/products/:id}) are grouped under a Gin router group with the JWT middleware applied. \texttt{POST /query} accepts a plain-English question and returns the generated SQL together with its result set. A \texttt{GET /healthz} endpoint enables liveness probes.
+
+All endpoints return consistent HTTP status codes: 200 for successful reads, 201 for resource creation, 400 for malformed input, 401 for missing or invalid credentials, 404 for unknown resources, 409 for duplicate-key conflicts, and 500 for unexpected server errors. Every mutation runs inside a database transaction so that cross-table updates are atomic.
 
 \subsection{Authentication and Security}
-Admin authentication is implemented with JSON Web Tokens (HS256 for the coursework). Protected endpoints require an \texttt{Authorization: Bearer <token>} header and middleware validates token signature and algorithm. The server generates a development JWT secret when none is provided; in production secrets should be provisioned via environment or secret manager. The AI query endpoint is protected by layered safety controls: prompt constraints, keyword blocklisting (rejects \texttt{INSERT}/\texttt{UPDATE}/\texttt{DELETE}/\texttt{DROP}/etc.), multi‑statement detection, and enforcement that generated SQL begins with \texttt{SELECT} or \texttt{WITH}. Recommended production hardening: migrate to RS256 with key rotation, enforce stricter request validation, and centralise secret management.
+Admin authentication is implemented with JSON Web Tokens signed with HS256. The \texttt{auth.Middleware()} Gin handler reads the \texttt{Authorization: Bearer} header, parses the token with \texttt{golang-jwt/jwt}, and explicitly asserts that the signing method is HS256 — rejecting any token that uses the \texttt{none} algorithm or any asymmetric scheme, which is a common JWT attack vector.
 
-\subsection{Database Schema}
-The service aggregates data from a single SQLite file (\texttt{retailDB.sqlite}), combining tables such as \texttt{info}, \texttt{brands}, \texttt{finance}, \texttt{reviews} and \texttt{traffic} into a composite product representation returned by read endpoints. Persistence is implemented using Go's \texttt{database/sql} and the SQLite driver; create/update/delete operations run inside transactions to preserve cross-table consistency. Queries are defensive against NULL/non-numeric values. For containerised deployments the DB file is persisted with a host-mounted volume and the path is configurable via \texttt{RETAILDB\_PATH}.
+The \texttt{/query} endpoint is defended by four independent read-only guards applied after the LLM response is received: (1) a system-prompt instruction banning all non-\texttt{SELECT} output; (2) a forbidden-keyword blocklist covering \texttt{INSERT}, \texttt{UPDATE}, \texttt{DELETE}, \texttt{DROP}, \texttt{ALTER}, \texttt{CREATE}, \texttt{TRUNCATE}, \texttt{ATTACH}, \texttt{DETACH}, \texttt{REINDEX}, \texttt{VACUUM}, and \texttt{PRAGMA}, checked with a word-boundary-aware helper to avoid false positives on column names; (3) rejection of any statement containing a mid-string semicolon (multi-statement injection); (4) assertion that the normalised query begins with \texttt{SELECT} or \texttt{WITH}. Only after all four checks pass is the query executed.
 
-\subsection{Architectural style and organization}
-The codebase follows a layered, modular architecture: HTTP handlers (e.g. \texttt{internal/handlers}), persistence logic (\texttt{internal/models}), and auth (\texttt{internal/auth}) are separated to improve testability and clarity. Cross-cutting concerns (auth, logging, validation) are implemented as middleware. The service is contract-driven (OpenAPI + Swagger UI), container-ready (Docker Compose), and covered by automated tests and CI/linting to ensure correctness and code quality. This architecture favours simplicity, observability and correctness for the embedded SQLite dataset used in the coursework.
+\subsection{Database Schema and Data Model}
+The retail dataset is stored across five tables: \texttt{info} (product identity and description), \texttt{brands}, \texttt{finance} (pricing), \texttt{reviews} (ratings), and \texttt{traffic} (last-visited timestamp). Rather than allowing destructive overwrites of original data, each mutable table carries a parallel set of \texttt{modified\_*} columns. Read queries use \texttt{COALESCE(modified\_col, original\_col)} so consumers always see the current effective value while the original dataset remains intact and auditable.
+
+\subsection{Architectural Style and Code Organisation}
+The codebase follows a layered architecture with clear package boundaries: \texttt{internal/handlers} owns HTTP concerns, \texttt{internal/models} owns all SQL, \texttt{internal/auth} owns JWT logic, and \texttt{internal/llm} owns the Gemini integration. This separation means each layer can be tested independently — handlers are tested with an in-memory database, models are tested without any HTTP machinery. Cross-cutting concerns (CORS, authentication, request logging) are expressed as Gin middleware so they can be composed and reordered without modifying handler logic.
 
 \section{Challenges and Solutions}
 
- [Discuss technical challenges encountered and how they were resolved.]
+\subsection{Heterogeneous Data Types in the Dataset}
+The retail dataset was originally exported from a Python environment, which stores missing numeric values as the string \texttt{"None"} rather than SQL \texttt{NULL}. Columns such as \texttt{listing\_price}, \texttt{sale\_price}, \texttt{discount}, and \texttt{revenue} are typed as \texttt{TEXT} in the schema. Go's \texttt{database/sql} scanner raises a runtime error when it attempts to scan a non-numeric string directly into a \texttt{float64} destination. The solution was to scan every such column into an intermediate \texttt{sql.NullString} and then call \texttt{strconv.ParseFloat} only when the value is both valid and not the \texttt{"None"} sentinel, leaving the field at its zero value otherwise. This defensive pattern is applied uniformly in \texttt{GetProducts} and \texttt{GetProductByID}.
+
+\subsection{Non-Destructive Update Semantics}
+A straightforward \texttt{UPDATE} against original columns would permanently overwrite dataset values, making it impossible to distinguish the authoritative source data from administrator edits. The \texttt{modified\_*} column design avoids this: every write targets only the shadow column, original values are never touched, and \texttt{COALESCE} at read time means users transparently see the latest effective value. The \texttt{PUT /admin/products/:id} handler accepts a partial JSON object — only the keys present in the request body are updated — dispatching each field to the correct table inside a single transaction to guarantee cross-table consistency.
+
+\subsection{LLM Safety for Natural-Language SQL}
+Exposing a live database through an LLM-generated query layer introduces prompt-injection and write-escalation risks that a single guard cannot reliably prevent. The implementation in \texttt{internal/llm/llm.go} applies four independent layers: a system-prompt constraint, a post-generation forbidden-keyword blocklist checked with a word-boundary-aware helper (preventing false positives on column names such as \texttt{revenue\_insert\_ts}), multi-statement rejection, and a \texttt{SELECT}/\texttt{WITH} prefix assertion. Additionally, the complete database schema and sample rows from each table are injected into the prompt so the model generates syntactically correct SQL rather than hallucinating column names.
+
+\subsection{JWT Secret Management and CI}
+Hardcoding a JWT secret in source code is a critical vulnerability. \texttt{auth.Init()} checks \texttt{JWT\_SECRET} in the environment first; if absent, it generates 32 cryptographically random bytes with \texttt{crypto/rand}, base64-encodes them, prints a visible warning to \texttt{stderr}, and caches the value in the environment for the process lifetime. A separate challenge arose in CI: the \texttt{mattn/go-sqlite3} driver uses CGo to wrap the SQLite C library, which caused the GitHub Actions build to fail with a missing \texttt{gcc} error on the minimal Ubuntu runner. The workflow was updated to install \texttt{gcc} and \texttt{libsqlite3-dev} before the Go build step.
 
 \section{Testing Approach}
 
- [Outline unit tests, integration tests, and testing methodologies.]
+Testing is organised into three tiers, all executed automatically by the GitHub Actions CI pipeline (\texttt{.github/workflows/ci.yml}) on every push and pull request.
+
+\subsection{Model-Layer Unit Tests}
+\texttt{internal/models/models\_test.go} exercises each CRUD function against a fresh in-memory SQLite database (\texttt{sql.Open("sqlite3", ":memory:")}) created with the exact production DDL. Tests cover \texttt{CreateProduct} with all optional fields populated, \texttt{GetProductByID} verifying field values, \texttt{GetProducts} with \texttt{limit}/\texttt{offset} pagination, \texttt{UpdateModifiedFields} for name, brand, and numeric price fields simultaneously, and \texttt{DeleteProduct} including the expected \texttt{sql.ErrNoRows} sentinel on a second deletion of the same row. Using an in-memory database means tests complete in milliseconds and never leave stale state on disk.
+
+\subsection{Handler-Layer Tests}
+\texttt{internal/handlers/handlers\_test.go} constructs the Gin router in \texttt{gin.TestMode} with an in-memory database and exercises it via Go's \texttt{net/http/httptest} recorder, starting no real TCP listener. The main test covers the full privileged flow: health check, login to obtain a JWT, attempt to create a product without a token (expecting \texttt{401}), create with a valid token (expecting \texttt{201}), retrieve by ID (\texttt{200}), update modified fields (\texttt{200}), and delete (\texttt{200}). A second test specifically submits a structurally valid but cryptographically invalid Bearer token and asserts the middleware returns \texttt{401 Unauthorized}.
+
+\subsection{Integration Tests and CI}
+\texttt{integration/integration\_test.go} runs against a live server expected on \texttt{localhost:8080} and exercises the complete end-to-end HTTP path. It uses a retry loop polling \texttt{/healthz} for up to 30 seconds so the suite can be run immediately after \texttt{docker compose up} without a manual wait. A time-stamped product ID (\texttt{int-<unix-nano>}) prevents collisions across concurrent runs.
+
+The CI workflow runs \texttt{go vet ./...}, \texttt{go build ./...}, and \texttt{go test ./... -v -coverprofile=coverage.out} on every branch push. Coverage artefacts are uploaded for post-build inspection. A GolangCI-Lint step (\texttt{.golangci.yml}) enforces error-check discipline, unused-variable detection, and security-oriented linters across the full codebase.
 
 \section{Lessons Learned}
 
- [Reflect on key learnings and development insights.]
+\textbf{Defensive scanning is essential for legacy datasets.} The \texttt{"None"} string sentinel only surfaced at runtime once scanning was attempted; the fix was mechanical but time-consuming to apply across all query functions. Building the \texttt{sql.NullString} + \texttt{strconv.ParseFloat} scanning helper from the outset would have avoided a debugging cycle.
+
+\textbf{Contract-first design pays dividends.} Writing the OpenAPI specification before implementing handlers clarified the intended request/response shapes and eliminated ambiguity about which status codes to return for each failure mode. Swagger UI served as a free, always-current integration test harness during development, and divergences between specification and implementation were caught immediately.
+
+\textbf{Layered AI safety controls are non-negotiable.} Early in development the \texttt{/query} endpoint relied only on the system prompt to prevent write operations. On reflection, any single control is fragile: a sufficiently creative prompt injection could bypass it. The final four-layer approach (prompt + blocklist + multi-statement + prefix check) provides meaningful defence-in-depth because each layer is independent.
+
+\textbf{Environment-driven configuration enables portable deployment.} Externalising all secrets (\texttt{JWT\_SECRET}, \texttt{ADMIN\_USER}, \texttt{ADMIN\_PASSWORD}, \texttt{GEMINI\_API\_KEY}) and the database path (\texttt{RETAILDB\_PATH}) through environment variables meant the identical Docker image ran without modification in local development, CI, and the Hetzner VPS.
+
+\textbf{In-memory SQLite databases dramatically speed up testing.} Replacing file-based test databases with \texttt{:memory:} instances cut the unit test suite runtime to under a second and eliminated flakiness from leftover state, making it practical to re-run tests on every file save during development.
 
 \section{Limitations and Future Improvements}
 
 \subsection{Current Limitations}
-[Identify known constraints.]
+
+\textbf{SQLite concurrency.} SQLite allows only one writer at a time; WAL mode reduces blocking but does not eliminate it. Under concurrent administrative write load the service would serialise requests or surface \texttt{SQLITE\_BUSY} errors. This is acceptable for the coursework use-case but precludes production deployment at any meaningful write throughput.
+
+\textbf{Symmetric JWT algorithm.} HS256 uses a single shared secret: any process possessing it can both sign and verify tokens. For a multi-service production system RS256 (or EdDSA) with a private/public key pair would allow token verification by downstream services without distributing signing capability, and enables key rotation without service restarts.
+
+\textbf{Plain-text password comparison.} \texttt{auth.ValidateCredentials} compares the submitted password against \texttt{ADMIN\_PASSWORD} using Go's \texttt{==} operator. This is trivially vulnerable to timing attacks. \texttt{crypto/subtle.ConstantTimeCompare} should be used instead, and production deployments should store a bcrypt hash rather than a plain-text password in the environment.
+
+\textbf{No rate limiting or pagination on \texttt{/query}.} Each request triggers an outbound Gemini API call and returns the full result set in a single JSON body. Repeated requests could exhaust API quota; a large \texttt{SELECT *} result could exhaust server memory. Token-bucket rate limiting per IP and optional \texttt{limit}/\texttt{offset} query parameters would address both risks.
 
 \subsection{Future Development}
-[Suggest improvements and scalability enhancements.]
+
+\textbf{PostgreSQL migration.} Replacing SQLite with PostgreSQL would deliver MVCC concurrency, mature backup and replication tooling, and the ability to enforce column types — eliminating the \texttt{"None"} string problem at the schema level.
+
+\textbf{MCP compatibility.} Exposing the structured product endpoints as a Model Context Protocol tool server would allow LLM agents to call well-typed functions (\texttt{getProduct}, \texttt{searchProducts}) rather than relying on free-form SQL generation, increasing reliability and reducing injection surface.
+
+\textbf{Role-based access control.} The current binary public/admin model could be extended with fine-grained roles (e.g.\ read-only analyst, product editor) using JWT claims, making the API safer for multi-user environments.
+
+\textbf{Structured logging and observability.} Replacing \texttt{log.Printf} calls with a structured logger such as \texttt{slog} or \texttt{zap}, adding per-request trace IDs, and emitting latency histograms to Prometheus would provide the observability required to operate the service reliably in production.
 
 \section{Generative AI Declaration}
 
- [Include detailed statement of GenAI usage, if applicable. Provide thoughtful analysis of how AI was utilized.]
+Generative AI tools — primarily GitHub Copilot (inline code completion) and Claude (conversational assistant) — were used throughout the development of this coursework. Their usage is categorised below.
+
+\textbf{Understanding unfamiliar libraries.} The \texttt{google.golang.org/genai} SDK is relatively new and its documentation sparse. Claude was used to understand how to construct a \texttt{genai.Client}, attach a system instruction, invoke \texttt{GenerateContent}, and extract the text candidate from the response. This replaced several hours of reading SDK source code and reduced the risk of misusing the API in a way that compiles but produces incorrect behaviour at runtime.
+
+\textbf{Boilerplate generation.} Copilot drafted repetitive but syntactically precise code: the \texttt{sql.NullString} scanning pattern applied identically across six columns in two query functions, the JWT middleware skeleton, and the Docker Compose volume-mount configuration. All suggestions were reviewed and adjusted for project-specific requirements — notably the \texttt{"None"} string handling, which Copilot did not produce unprompted.
+
+\textbf{Debugging and error diagnosis.} Claude diagnosed the CGo CI failure (missing \texttt{gcc} on the Ubuntu runner) and the JWT token invalidation bug (the generated secret was not persisted in the environment between \texttt{Init()} calls in tests), suggesting the \texttt{os.Setenv} caching approach now used in \texttt{auth.Init()}.
+
+\textbf{Security analysis.} Claude reviewed the \texttt{/query} endpoint design, identifying that \texttt{strings.Contains} on the uppercased query would false-positive on column names containing forbidden substrings and miss keywords inside SQL comments. This led to the boundary-aware \texttt{containsKeyword} helper and the addition of multi-statement detection.
+
+\textbf{Critical reflection.} AI suggestions occasionally produced incorrect Go idioms — e.g.\ outdated \texttt{golang-jwt} method signatures and incorrect error-wrapping syntax. Every suggestion was verified by consulting the library documentation and running the full test suite before being committed. No AI-generated code was accepted without understanding its purpose and confirming its correctness independently.
 
 \appendix
 
 \section{References}
 \begin{itemize}
-    \item GitHub Repository: \url{https://github.com/...}
-    \item API Documentation: \url{...}
-    \item Presentation Slides: \url{...}
+    \item GitHub Repository: \url{https://github.com/sc22jj/COMP3011-Web-Services}
+    \item API Documentation: \url{http://YOUR_HETZNER_IP:8080/docs}
+    \item Presentation Slides: \url{https://...}
+    \item Gin Web Framework: \url{https://github.com/gin-gonic/gin}
+    \item golang-jwt/jwt: \url{https://github.com/golang-jwt/jwt}
+    \item mattn/go-sqlite3: \url{https://github.com/mattn/go-sqlite3}
+    \item Google Generative AI Go SDK: \url{https://pkg.go.dev/google.golang.org/genai}
+    \item OpenAPI Specification v3: \url{https://spec.openapis.org/oas/v3.0.3}
+    \item Docker Documentation: \url{https://docs.docker.com}
 \end{itemize}
 
 \section{GenAI Conversation Logs}
- [Attach conversation logs if GenAI was used during development.]
+Selected excerpts are provided below; full logs are available on request.
+
+\subsection*{Excerpt 1 — CGo CI build failure}
+\textbf{Prompt:} ``My GitHub Actions Go build fails with \texttt{cgo: C compiler ``gcc'' not found}. I am using \texttt{github.com/mattn/go-sqlite3}. How do I fix this on Ubuntu?''
+
+\textbf{Response (Claude):} ``The \texttt{go-sqlite3} package wraps the SQLite C library via CGo, so a C compiler and the SQLite development headers must be present. Add \texttt{sudo apt-get install -y gcc libsqlite3-dev} as a step before \texttt{go build}. Ensure \texttt{CGO\_ENABLED} is not set to 0 in your workflow environment.''
+
+\textbf{Action taken:} Added the \texttt{apt-get} install step to \texttt{.github/workflows/ci.yml}. Verified on the next push that the build passed. \texttt{CGO\_ENABLED} was already at its default value of 1.
+
+\subsection*{Excerpt 2 — LLM injection review}
+\textbf{Prompt:} ``I have a Go endpoint that sends a natural-language question to Gemini, receives a SQL query, and executes it. I block \texttt{INSERT}/\texttt{UPDATE}/\texttt{DELETE}/\texttt{DROP} with a \texttt{strings.Contains} check. Is this sufficient?''
+
+\textbf{Response (Claude):} ``A plain \texttt{strings.Contains} on the uppercased query will false-positive on column names that happen to contain those substrings (e.g.\ \texttt{revenue\_insert\_ts}) and will miss keywords embedded inside SQL comments. Additionally: (1) assert the query begins with \texttt{SELECT} or \texttt{WITH} after stripping whitespace; (2) reject any query containing a semicolon that is not the final character — this blocks multi-statement injection; (3) replace \texttt{strings.Contains} with a word-boundary-aware check.''
+
+\textbf{Action taken:} Refactored \texttt{internal/llm/llm.go} to introduce the \texttt{containsKeyword} helper, added the \texttt{strings.HasPrefix} assertion for \texttt{SELECT}/\texttt{WITH}, and added multi-statement detection. Test cases were added to cover both the boundary false-positive scenario and the multi-statement attack.
 
 \end{document}
