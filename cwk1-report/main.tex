@@ -89,7 +89,7 @@ Testing is organised into three tiers, all executed automatically by the GitHub 
 
 The CI workflow runs \texttt{go vet ./...}, \texttt{go build ./...}, and \texttt{go test ./... -v -coverprofile=coverage.out} on every branch push. Coverage artefacts are uploaded for post-build inspection. A GolangCI-Lint step (\texttt{.golangci.yml}) enforces error-check discipline, unused-variable detection, and security-oriented linters across the full codebase.
 
-\section{Lessons Learned}
+\section{Lessons Learnt}
 
 \textbf{Defensive scanning is essential for legacy datasets.} The \texttt{"None"} string sentinel only surfaced at runtime once scanning was attempted; the fix was mechanical but time-consuming to apply across all query functions. Building the \texttt{sql.NullString} + \texttt{strconv.ParseFloat} scanning helper from the outset would have avoided a debugging cycle.
 
@@ -143,7 +143,7 @@ Generative AI tools — primarily GitHub Copilot (inline code completion) and Cl
 \begin{itemize}
     \item GitHub Repository: \url{https://github.com/jacksery/COMP3011-Web-Services}
     \item API Documentation: \url{http://188.245.149.135:8080/docs}
-    \item Presentation Slides: \url{https://...}
+    \item Presentation Slides: \href{https://docs.google.com/presentation/d/1HKU4cWUJhM8pYjJE6DzwXjU8x08xCCS2jBQ5iKM0qwI/edit?usp=sharing}{Google Slides (link)}
     \item Gin Web Framework: \url{https://github.com/gin-gonic/gin}
     \item golang-jwt/jwt: \url{https://github.com/golang-jwt/jwt}
     \item mattn/go-sqlite3: \url{https://github.com/mattn/go-sqlite3}
