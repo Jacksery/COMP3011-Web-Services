@@ -114,6 +114,7 @@ If you'd like, I can (A) update `docker-compose.yml` to use `./data` and create 
 
 - OpenAPI spec available at: `/openapi.yaml`
 - Interactive docs (Swagger UI) at: `/docs` (loads `/openapi.yaml`)
+- Local PDF available at [docs.pdf](./docs.pdf)
 
 ---
 
